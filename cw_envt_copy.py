@@ -309,23 +309,30 @@ def run_creature_on_mountain(dna, iterations=2400, start_pos=(0, 0, 6)):
     start_z = start_pos[2]
     max_height = start_z
 
+    min_xy_dist = float("inf")
+
     for step in range(iterations):
         p.stepSimulation()
-
-        # drive motors every few frames (same as lecturer’s Simulation)
         if step % 24 == 0:
             update_motors_for_ga(cid, cr)
 
         pos, _ = p.getBasePositionAndOrientation(cid)
         cr.update_position(pos)
 
-        z = pos[2]
+        x, y, z = pos
         if z > max_height:
             max_height = z
 
-    # fitness = how much higher it got than its starting position
-    fitness = max_height - start_z
+        xy_dist = (x**2 + y**2) ** 0.5
+        if xy_dist < min_xy_dist:
+            min_xy_dist = xy_dist
+
+    raw_fitness = max_height - start_z
+    fitness = raw_fitness - 0.01 * min_xy_dist
+    fitness = max(fitness, -2.0)
     return fitness
+
+
 
 
 
