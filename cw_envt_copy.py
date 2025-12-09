@@ -237,10 +237,7 @@ def main():
             p.stepSimulation()
             step += 1
 
-            # Every N steps, update the joint motors from the creature's motors
-            if step % 24 == 0:
-                update_motors_for_ga(robot_id, cr)
-            
+            update_motors_for_ga(robot_id, cr)
             clamp_base_velocity(robot_id, max_lin=3.0, max_ang=3.0)
 
             time.sleep(1.0 / 240.0)
@@ -276,13 +273,13 @@ def update_motors_for_ga(cid, cr):
     motors = cr.get_motors()
     for jid in range(p.getNumJoints(cid)):
         m = motors[jid]
-        vel = m.get_output() * 1.2
+        vel = m.get_output() * 2.0
         p.setJointMotorControl2(
             cid,
             jid,
             controlMode=p.VELOCITY_CONTROL,
             targetVelocity=vel,
-            force=20,
+            force=30,
         )
 
 
@@ -365,10 +362,8 @@ def run_creature_on_mountain(dna, iterations=2400, start_pos=(3, 0, 3)):
 
     for step in range(iterations):
         p.stepSimulation()
-
-        # drive motors periodically
-        if step % 24 == 0:
-            update_motors_for_ga(cid, cr)
+        
+        update_motors_for_ga(cid, cr)
 
         clamp_base_velocity(cid, max_lin=3.0, max_ang=3.0)
 
@@ -471,12 +466,11 @@ def watch_creature_on_mountain(dna, iterations=2400, start_pos=(3, 0, 3)):
     for step in range(iterations):
         p.stepSimulation()
 
-        if step % 24 == 0:
-            update_motors_for_ga(cid, cr)
-
+        
+        update_motors_for_ga(cid, cr)
         clamp_base_velocity(cid, max_lin=3.0, max_ang=3.0)
         
-        # Slow down to real-time so you can watch it
+        # Slow down to real-time
         time.sleep(1.0 / 240.0)
 
 
