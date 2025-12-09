@@ -276,13 +276,13 @@ def update_motors_for_ga(cid, cr):
     motors = cr.get_motors()
     for jid in range(p.getNumJoints(cid)):
         m = motors[jid]
-        vel = m.get_output() * 0.8   # slower motion
+        vel = m.get_output() * 1.2
         p.setJointMotorControl2(
             cid,
             jid,
             controlMode=p.VELOCITY_CONTROL,
             targetVelocity=vel,
-            force=15,
+            force=20,
         )
 
 
@@ -316,7 +316,7 @@ def clamp_base_velocity(cid, max_lin=3.0, max_ang=3.0):
 
 
 
-def run_creature_on_mountain(dna, iterations=2400, start_pos=(0, 0, 2)):
+def run_creature_on_mountain(dna, iterations=2400, start_pos=(3, 0, 3)):
     """
     Core evaluation function for the GA.
 
@@ -349,6 +349,10 @@ def run_creature_on_mountain(dna, iterations=2400, start_pos=(0, 0, 2)):
 
     start_z = start_pos[2]
 
+    # starting radial distance from centre (we spawn off-centre now)
+    start_r = math.sqrt(start_pos[0]**2 + start_pos[1]**2)
+    best_r = start_r
+
     # Track *average* climbing while near the mountain centre
     total_xy_dist = 0.0
     steps = 0
@@ -376,6 +380,10 @@ def run_creature_on_mountain(dna, iterations=2400, start_pos=(0, 0, 2)):
 
         total_xy_dist += r
         steps += 1
+
+        # track closest we ever got to the centre (towards the top)
+        if r < best_r:
+            best_r = r
 
         # Are we roughly on the mountain (not at the far walls / below floor)?
         if r < MOUNTAIN_RADIUS and z > start_z - 0.5:
@@ -406,10 +414,13 @@ def run_creature_on_mountain(dna, iterations=2400, start_pos=(0, 0, 2)):
     # time spent actually on the mountain (normalised)
     time_fraction = time_on_mountain / max(1, steps)
 
-    # fitness: climb + stay on mountain - roll to walls - be huge & sprawly
+    radial_improvement = max(0.0, start_r - best_r)
+
+
     fitness = (
         climb_height           # main goal: be higher on average
         + 0.8 * time_fraction  # strong bonus: stay on the slope
+        + 0.2 * radial_improvement  # reward moving towards the top
         - 0.02 * avg_xy_dist   # penalty: hang out far from centre
         - size_penalty         # penalty: very wide shapes
     )
@@ -422,7 +433,7 @@ def run_creature_on_mountain(dna, iterations=2400, start_pos=(0, 0, 2)):
 
 
 
-def watch_creature_on_mountain(dna, iterations=2400, start_pos=(0, 0, 2)):
+def watch_creature_on_mountain(dna, iterations=2400, start_pos=(3, 0, 3)):
     """
     Same as run_creature_on_mountain, but:
     - sets a nice camera
