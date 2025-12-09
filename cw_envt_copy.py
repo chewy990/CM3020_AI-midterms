@@ -186,8 +186,8 @@ def spawn_random_creature():
     with open(urdf_path, "w") as f:
         f.write(cr.to_xml())
 
-    # Spawn it *on the slope* of the mountain
-    start_pos = (0, -4, 3)   # y closer to 0, z a bit higher
+    # Spawn creature on mountain
+    start_pos = (0, 0, 6)   # y closer to 0, z a bit higher
     start_orn = p.getQuaternionFromEuler((0, 0, 0))
     robot_id = p.loadURDF(urdf_path, start_pos, start_orn)
 
@@ -282,7 +282,7 @@ def update_motors_for_ga(cid, cr):
         )
 
 
-def run_creature_on_mountain(dna, iterations=2400, start_pos=(0, -4, 3)):
+def run_creature_on_mountain(dna, iterations=2400, start_pos=(0, 0, 6)):
     """
     Core evaluation function for the GA.
 

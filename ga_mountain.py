@@ -121,7 +121,7 @@ if __name__ == "__main__":
     p.connect(p.GUI)
 
     p.resetDebugVisualizerCamera(
-        cameraDistance=35,
+        cameraDistance=18,
         cameraYaw=45,
         cameraPitch=-35,
         cameraTargetPosition=[0, 0, 2]
