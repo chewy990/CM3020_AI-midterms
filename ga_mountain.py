@@ -4,9 +4,9 @@ import pybullet as p
 import creature
 import cw_envt_copy as env   # <- rename if your file name is different
 
-
-POP_SIZE = 30
-NUM_GENERATIONS = 30
+MODE = "motors_only"
+POP_SIZE = 5
+NUM_GENERATIONS = 3
 ITERATIONS = 1600
 MUTATION_RATE = 0.15
 MUTATION_STD = 0.15
@@ -53,6 +53,30 @@ def mutate_dna(dna, rate=MUTATION_RATE, std=MUTATION_STD):
         new.append(g)
     return new
 
+def mutate_motors_only(dna, rate=MUTATION_RATE, std=MUTATION_STD):
+    """
+    Mutate ONLY the motor-related genes.
+    Assumes the last gene in the DNA list corresponds mainly to motor parameters.
+    If your Creature encoding is different, you can adjust which indices are mutated.
+    """
+    new = []
+    num_genes = len(dna)
+    motor_gene_index = num_genes - 1  # assume last gene = motors
+
+    for idx, gene in enumerate(dna):
+        g = gene.copy()
+        if idx == motor_gene_index:
+            # apply Gaussian noise to some elements
+            mask = np.random.rand(*g.shape) < rate
+            g[mask] += np.random.normal(0, std, size=mask.sum())
+            # keep values inside [0, 1) to avoid genome crashes
+            g = np.clip(g, 0.0, 0.999)
+        # else: body/structure genes stay exactly the same
+        new.append(g)
+
+    return new
+
+
 
 # -------------------------
 # Evaluation
@@ -76,14 +100,15 @@ def evaluate_dna(dna, gui=False):
 # Simple GA loop
 # -------------------------
 
-def genetic_algorithm():
+def genetic_algorithm_full():
+    """
+    Baseline GA: evolve full DNA (body + motors).
+    """
     population = [random_dna() for _ in range(POP_SIZE)]
-
-    # For logging
-    history = []  # list of (generation, best, mean)
+    history = []  # (generation, best, mean)
 
     for gen in range(NUM_GENERATIONS):
-        print(f"\nGeneration {gen+1}/{NUM_GENERATIONS}")
+        print(f"\n[Full] Generation {gen+1}/{NUM_GENERATIONS}")
 
         fitnesses = np.zeros(POP_SIZE)
         for i, dna in enumerate(population):
@@ -99,9 +124,8 @@ def genetic_algorithm():
 
         history.append((gen+1, best_fit, mean_fit))
 
-        # ---- simple evolution: elitism + mutated copies ----
+        # ---- elitism + mutated copies (full DNA mutates) ----
         new_population = []
-
         elite_dna = clone_dna(population[best_idx])
         new_population.append(elite_dna)
 
@@ -111,9 +135,9 @@ def genetic_algorithm():
 
         population = new_population
 
-    # Save log to CSV for later plotting
+    # Save log to CSV
     np.savetxt(
-        "ga_mountain_log.csv",
+        "ga_full_log.csv",
         np.array(history),
         delimiter=",",
         header="generation,best_fitness,mean_fitness",
@@ -123,14 +147,76 @@ def genetic_algorithm():
     return population, elite_dna
 
 
+def genetic_algorithm_motors_only():
+    """
+    Encoding experiment: fix the body, evolve ONLY the motor parameters.
+    """
+    population = [random_dna() for _ in range(POP_SIZE)]
+    history = []  # (generation, best, mean)
+
+    for gen in range(NUM_GENERATIONS):
+        print(f"\n[Motors-only] Generation {gen+1}/{NUM_GENERATIONS}")
+
+        fitnesses = np.zeros(POP_SIZE)
+        for i, dna in enumerate(population):
+            fit = evaluate_dna(dna, gui=False)
+            fitnesses[i] = fit
+            print(f"  Individual {i+1}: fitness = {fit:.3f}")
+
+        best_idx = np.argmax(fitnesses)
+        best_fit = fitnesses[best_idx]
+        mean_fit = np.mean(fitnesses)
+        print(f"  Best fitness: {best_fit:.3f}")
+        print(f"  Mean fitness: {mean_fit:.3f}")
+
+        history.append((gen+1, best_fit, mean_fit))
+
+        # ---- elitism + mutated copies (ONLY motors mutate) ----
+        new_population = []
+        elite_dna = clone_dna(population[best_idx])
+        new_population.append(elite_dna)
+
+        while len(new_population) < POP_SIZE:
+            child = mutate_motors_only(elite_dna)
+            new_population.append(child)
+
+        population = new_population
+
+    # Save log to CSV
+    np.savetxt(
+        "ga_motors_only_log.csv",
+        np.array(history),
+        delimiter=",",
+        header="generation,best_fitness,mean_fitness",
+        comments=""
+    )
+
+    return population, elite_dna
+
 
 if __name__ == "__main__":
-    final_pop, best_dna = genetic_algorithm()
+    # Choose which experiment to run:
+    # "full"        -> baseline (body + motors evolve)
+    # "motors_only" -> fixed body, only motors evolve
+    MODE = "full"  # change this and re-run to switch
 
-    # Optional: run the best creature in GUI so you can watch it
+    if MODE == "full":
+        final_pop, best_dna = genetic_algorithm_full()
+    elif MODE == "motors_only":
+        final_pop, best_dna = genetic_algorithm_motors_only()
+    else:
+        raise ValueError("Unknown MODE, use 'full' or 'motors_only'.")
+
     print("\nRunning best creature in GUI...")
     p.connect(p.GUI)
-    env.watch_creature_on_mountain(best_dna, iterations=ITERATIONS)
+
+    # If you implemented watch_creature_on_mountain, use that for slow, visible playback:
+    try:
+        env.watch_creature_on_mountain(best_dna, iterations=ITERATIONS)
+    except AttributeError:
+        # fallback: fast evaluation, may finish quickly
+        env.run_creature_on_mountain(best_dna, iterations=ITERATIONS)
 
     input("Press Enter to quit...")
     p.disconnect()
+

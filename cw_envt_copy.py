@@ -313,18 +313,20 @@ def run_creature_on_mountain(dna, iterations=2400, start_pos=(0, 0, 6)):
     start_orn = p.getQuaternionFromEuler((0, 0, 0))
     cid = p.loadURDF(xml_file, start_pos, start_orn)
 
-        # start height = z of spawn position
+    # start height = z of spawn position
     start_z = start_pos[2]
     max_height_on_mountain = start_z
 
     total_xy_dist = 0.0
     steps = 0
 
-    # choose a radius that roughly matches your mountain footprint
+    # radius that roughly covers your mountain footprint
     MOUNTAIN_RADIUS = 4.0
 
     for step in range(iterations):
         p.stepSimulation()
+
+        # drive motors periodically
         if step % 24 == 0:
             update_motors_for_ga(cid, cr)
 
@@ -336,23 +338,24 @@ def run_creature_on_mountain(dna, iterations=2400, start_pos=(0, 0, 6)):
         total_xy_dist += r
         steps += 1
 
-        # ONLY reward height while the creature is above the mountain area
+        # ONLY reward height while above the mountain area
         if r < MOUNTAIN_RADIUS:
             if z > max_height_on_mountain:
                 max_height_on_mountain = z
 
-    # average distance from centre over the whole run
+    # average distance from the centre during the whole run
     avg_xy_dist = total_xy_dist / max(1, steps)
 
-    # height gained while over the mountain
+    # height gained *while on the mountain*
     raw_height = max_height_on_mountain - start_z
 
-    # encourage staying near the mountain, discourage rolling to walls
+    # fitness: climb higher + stay near the mountain
     fitness = raw_height - 0.02 * avg_xy_dist
 
-    # don't let terrible behaviour dominate
+    # prevent crazy huge negatives from dominating selection
     fitness = max(fitness, -2.0)
     return fitness
+
 
 
 def watch_creature_on_mountain(dna, iterations=2400, start_pos=(0, 0, 6)):
