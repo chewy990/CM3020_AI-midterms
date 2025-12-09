@@ -5,11 +5,11 @@ import creature
 import cw_envt_copy as env   # <- rename if your file name is different
 
 
-POP_SIZE = 10
-NUM_GENERATIONS = 5
-ITERATIONS = 2400
-MUTATION_RATE = 0.1
-MUTATION_STD = 0.1
+POP_SIZE = 30
+NUM_GENERATIONS = 40
+ITERATIONS = 1600
+MUTATION_RATE = 0.15
+MUTATION_STD = 0.15
 
 
 # -------------------------
@@ -77,40 +77,51 @@ def evaluate_dna(dna, gui=False):
 # -------------------------
 
 def genetic_algorithm():
-    # initial population: list of DNA objects
     population = [random_dna() for _ in range(POP_SIZE)]
+
+    # For logging
+    history = []  # list of (generation, best, mean)
 
     for gen in range(NUM_GENERATIONS):
         print(f"\nGeneration {gen+1}/{NUM_GENERATIONS}")
 
-        # evaluate all individuals
         fitnesses = np.zeros(POP_SIZE)
         for i, dna in enumerate(population):
             fit = evaluate_dna(dna, gui=False)
             fitnesses[i] = fit
             print(f"  Individual {i+1}: fitness = {fit:.3f}")
 
-        # record stats
         best_idx = np.argmax(fitnesses)
         best_fit = fitnesses[best_idx]
+        mean_fit = np.mean(fitnesses)
         print(f"  Best fitness: {best_fit:.3f}")
+        print(f"  Mean fitness: {mean_fit:.3f}")
+
+        history.append((gen+1, best_fit, mean_fit))
 
         # ---- simple evolution: elitism + mutated copies ----
         new_population = []
 
-        # keep best individual
         elite_dna = clone_dna(population[best_idx])
         new_population.append(elite_dna)
 
-        # fill rest with mutated versions of elite
         while len(new_population) < POP_SIZE:
             child = mutate_dna(elite_dna)
             new_population.append(child)
 
         population = new_population
 
-    # return the final population and the best individual
+    # Save log to CSV for later plotting
+    np.savetxt(
+        "ga_mountain_log.csv",
+        np.array(history),
+        delimiter=",",
+        header="generation,best_fitness,mean_fitness",
+        comments=""
+    )
+
     return population, elite_dna
+
 
 
 if __name__ == "__main__":
@@ -119,14 +130,7 @@ if __name__ == "__main__":
     # Optional: run the best creature in GUI so you can watch it
     print("\nRunning best creature in GUI...")
     p.connect(p.GUI)
+    env.watch_creature_on_mountain(best_dna, iterations=ITERATIONS)
 
-    p.resetDebugVisualizerCamera(
-        cameraDistance=18,
-        cameraYaw=45,
-        cameraPitch=-35,
-        cameraTargetPosition=[0, 0, 2]
-    )
-
-    env.run_creature_on_mountain(best_dna, iterations=ITERATIONS)
     input("Press Enter to quit...")
     p.disconnect()

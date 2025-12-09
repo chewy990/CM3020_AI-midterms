@@ -267,19 +267,32 @@ def setup_world_for_ga(arena_size=20):
 
 def update_motors_for_ga(cid, cr):
     """
-    Copy of the logic from simulation.update_motors, but using the
-    default physics client. This lets the GA drive the joints.
+    Apply each motor's output as a joint velocity.
+
+    Note: In this codebase Motor doesn't have a .step() method,
+    so we just call get_output() directly.
     """
     motors = cr.get_motors()
-    for jid in range(p.getNumJoints(cid)):
+
+    # safety: don't assume motors and joints count are identical
+    num_joints = p.getNumJoints(cid)
+    num_motors = len(motors)
+    count = min(num_joints, num_motors)
+
+    for jid in range(count):
         m = motors[jid]
+
+        # Motor output is usually in [-1, 1]; scale it to a more visible velocity
+        vel = m.get_output() * 5.0   # tweak factor 5.0 if too wild / too weak
+
         p.setJointMotorControl2(
             cid,
             jid,
             controlMode=p.VELOCITY_CONTROL,
-            targetVelocity=m.get_output(),
-            force=15,
+            targetVelocity=vel,
+            force=50,                 # a bit stronger than 15 so it can move under contact
         )
+
 
 
 def run_creature_on_mountain(dna, iterations=2400, start_pos=(0, 0, 6)):
@@ -332,7 +345,46 @@ def run_creature_on_mountain(dna, iterations=2400, start_pos=(0, 0, 6)):
     fitness = max(fitness, -2.0)
     return fitness
 
+def watch_creature_on_mountain(dna, iterations=2400, start_pos=(0, 0, 6)):
+    """
+    Same as run_creature_on_mountain, but:
+    - sets a nice camera
+    - slows the simulation down so you can actually SEE the creature move
+    - does not return fitness (it's just for visualisation)
+    Assumes p.connect(...) has already been called (GUI or DIRECT).
+    """
+    # Build the world (arena + mountain)
+    setup_world_for_ga(arena_size=20)
 
+    # Build creature with this dna
+    gene_count = len(dna)
+    cr = creature.Creature(gene_count=gene_count)
+    cr.update_dna(dna)
+
+    # Write URDF and load into PyBullet
+    xml_file = "ga_view.urdf"
+    with open(xml_file, "w") as f:
+        f.write(cr.to_xml())
+
+    start_orn = p.getQuaternionFromEuler((0, 0, 0))
+    cid = p.loadURDF(xml_file, start_pos, start_orn)
+
+    # Nice camera pointing at the centre of the arena
+    p.resetDebugVisualizerCamera(
+        cameraDistance=18,
+        cameraYaw=45,
+        cameraPitch=-35,
+        cameraTargetPosition=[0, 0, 2],
+    )
+
+    for step in range(iterations):
+        p.stepSimulation()
+
+        if step % 24 == 0:
+            update_motors_for_ga(cid, cr)
+
+        # Slow down to real-time so you can watch it
+        time.sleep(1.0 / 240.0)
 
 
 
