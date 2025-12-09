@@ -40,14 +40,16 @@ def clone_dna(dna):
 
 def mutate_dna(dna, rate=MUTATION_RATE, std=MUTATION_STD):
     """
-    Add Gaussian noise to some elements of each gene, then clip to [0,1].
+    Add Gaussian noise to some elements of each gene, then clamp to [0, 0.999].
+    This avoids genome.py crashes when 'joint-parent' etc. becomes exactly 1.0.
     """
     new = []
     for gene in dna:
         g = gene.copy()
         mask = np.random.rand(*g.shape) < rate
         g[mask] += np.random.normal(0, std, size=mask.sum())
-        g = np.clip(g, 0.0, 1.0)
+        # IMPORTANT: upper bound is < 1.0, to keep parent indices valid
+        g = np.clip(g, 0.0, 0.999)
         new.append(g)
     return new
 
@@ -117,6 +119,14 @@ if __name__ == "__main__":
     # Optional: run the best creature in GUI so you can watch it
     print("\nRunning best creature in GUI...")
     p.connect(p.GUI)
+
+    p.resetDebugVisualizerCamera(
+        cameraDistance=35,
+        cameraYaw=45,
+        cameraPitch=-35,
+        cameraTargetPosition=[0, 0, 2]
+    )
+
     env.run_creature_on_mountain(best_dna, iterations=ITERATIONS)
     input("Press Enter to quit...")
     p.disconnect()
