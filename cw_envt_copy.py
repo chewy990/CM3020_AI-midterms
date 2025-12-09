@@ -160,10 +160,8 @@ def load_mountain():
     mountain_position = (0, 0, -1)  # tweak if needed
     mountain_orientation = p.getQuaternionFromEuler((0, 0, 0))
 
-    # Add local 'shapes' folder to search path so loadURDF can find the mountain
     p.setAdditionalSearchPath("shapes/")
 
-    # You can swap this to other URDFs you generate
     mountain_id = p.loadURDF(
         "gaussian_pyramid.urdf",
         mountain_position,
@@ -171,7 +169,11 @@ def load_mountain():
         useFixedBase=1,
     )
 
+    # Make the mountain non-bouncy and reasonably grippy
+    p.changeDynamics(mountain_id, -1, restitution=0.0, lateralFriction=1.5)
+
     return mountain_id
+
 
 
 def spawn_random_creature():
@@ -190,6 +192,9 @@ def spawn_random_creature():
     start_pos = (0, 0, 6)   # y closer to 0, z a bit higher
     start_orn = p.getQuaternionFromEuler((0, 0, 0))
     robot_id = p.loadURDF(urdf_path, start_pos, start_orn)
+
+    # Make creature less bouncy and a bit grippy
+    p.changeDynamics(robot_id, -1, restitution=0.0, lateralFriction=1.2)
 
     return robot_id, cr
 
@@ -235,6 +240,8 @@ def main():
             # Every N steps, update the joint motors from the creature's motors
             if step % 24 == 0:
                 update_motors_for_ga(robot_id, cr)
+            
+            clamp_base_velocity(robot_id, max_lin=3.0, max_ang=3.0)
 
             time.sleep(1.0 / 240.0)
     except KeyboardInterrupt:
@@ -266,36 +273,55 @@ def setup_world_for_ga(arena_size=20):
 
 
 def update_motors_for_ga(cid, cr):
-    """
-    Apply each motor's output as a joint velocity.
-    """
     motors = cr.get_motors()
-    num_joints = p.getNumJoints(cid)
-    num_motors = len(motors)
-    count = min(num_joints, num_motors)
-
-    for jid in range(count):
+    for jid in range(p.getNumJoints(cid)):
         m = motors[jid]
-
-        # more conservative scaling so they don't launch themselves like crazy
-        vel = m.get_output() * 2.0     # was 5.0
+        vel = m.get_output() * 0.8   # slower motion
         p.setJointMotorControl2(
             cid,
             jid,
             controlMode=p.VELOCITY_CONTROL,
             targetVelocity=vel,
-            force=30,                  # was 50 / 15
+            force=15,
         )
 
 
+def clamp_base_velocity(cid, max_lin=3.0, max_ang=3.0):
+    """
+    Limit the robot's linear and angular velocity so it cannot 'rocket' away.
+    """
+    lin_vel, ang_vel = p.getBaseVelocity(cid)
+
+    # Clamp linear velocity
+    lx, ly, lz = lin_vel
+    lin_speed = math.sqrt(lx*lx + ly*ly + lz*lz)
+    if lin_speed > max_lin and lin_speed > 1e-6:
+        scale = max_lin / lin_speed
+        lx *= scale
+        ly *= scale
+        lz *= scale
+    else:
+        scale = 1.0  # not really used, but fine
+
+    # Clamp angular velocity
+    ax, ay, az = ang_vel
+    ang_speed = math.sqrt(ax*ax + ay*ay + az*az)
+    if ang_speed > max_ang and ang_speed > 1e-6:
+        ascale = max_ang / ang_speed
+        ax *= ascale
+        ay *= ascale
+        az *= ascale
+
+    p.resetBaseVelocity(cid, [lx, ly, lz], [ax, ay, az])
 
 
-def run_creature_on_mountain(dna, iterations=2400, start_pos=(0, 0, 6)):
+
+def run_creature_on_mountain(dna, iterations=2400, start_pos=(0, 0, 2)):
     """
     Core evaluation function for the GA.
 
     dna: list of numpy arrays (same structure as Creature.dna)
-    returns: fitness = height gained during the simulation
+    returns: fitness = how well it climbs and stays on the mountain
     """
     # build the world
     setup_world_for_ga(arena_size=20)
@@ -313,15 +339,25 @@ def run_creature_on_mountain(dna, iterations=2400, start_pos=(0, 0, 6)):
     start_orn = p.getQuaternionFromEuler((0, 0, 0))
     cid = p.loadURDF(xml_file, start_pos, start_orn)
 
-    # start height = z of spawn position
-    start_z = start_pos[2]
-    max_height_on_mountain = start_z
+    # Creature dynamics: no bounce, some friction
+    p.changeDynamics(cid, -1, restitution=0.0, lateralFriction=1.2)
 
+
+    # ---------------------------
+    # FITNESS MEASUREMENT
+    # ---------------------------
+
+    start_z = start_pos[2]
+
+    # Track *average* climbing while near the mountain centre
     total_xy_dist = 0.0
     steps = 0
+    time_on_mountain = 0
+    sum_height_on_mountain = 0.0
 
     # radius that roughly covers your mountain footprint
     MOUNTAIN_RADIUS = 4.0
+    MAX_CLIMB_REWARD = 4.0  # only reward up to +4m above start
 
     for step in range(iterations):
         p.stepSimulation()
@@ -330,35 +366,63 @@ def run_creature_on_mountain(dna, iterations=2400, start_pos=(0, 0, 6)):
         if step % 24 == 0:
             update_motors_for_ga(cid, cr)
 
+        clamp_base_velocity(cid, max_lin=3.0, max_ang=3.0)
+
         pos, _ = p.getBasePositionAndOrientation(cid)
         cr.update_position(pos)
 
         x, y, z = pos
-        r = (x**2 + y**2) ** 0.5  # distance from centre (0,0)
+        r = (x ** 2 + y ** 2) ** 0.5  # distance from centre (0,0)
+
         total_xy_dist += r
         steps += 1
 
-        # ONLY reward height while above the mountain area
-        if r < MOUNTAIN_RADIUS:
-            if z > max_height_on_mountain:
-                max_height_on_mountain = z
+        # Are we roughly on the mountain (not at the far walls / below floor)?
+        if r < MOUNTAIN_RADIUS and z > start_z - 0.5:
+            time_on_mountain += 1
 
-    # average distance from the centre during the whole run
+            # Clamp height so crazy rocket jumps don't dominate
+            z_clamped = min(z, start_z + MAX_CLIMB_REWARD)
+            sum_height_on_mountain += z_clamped
+
+    # ---- morphology penalty (size) ----
+    aabb_min, aabb_max = p.getAABB(cid)
+    extent_x = aabb_max[0] - aabb_min[0]
+    extent_y = aabb_max[1] - aabb_min[1]
+    extent_z = aabb_max[2] - aabb_min[2]
+    size_penalty = 0.01 * (extent_x + extent_y)
+
+    # ---- aggregate fitness terms ----
     avg_xy_dist = total_xy_dist / max(1, steps)
 
-    # height gained *while on the mountain*
-    raw_height = max_height_on_mountain - start_z
+    if time_on_mountain > 0:
+        avg_height_on_mountain = sum_height_on_mountain / time_on_mountain
+    else:
+        avg_height_on_mountain = start_z
 
-    # fitness: climb higher + stay near the mountain
-    fitness = raw_height - 0.02 * avg_xy_dist
+    # climb: average height while ON the mountain
+    climb_height = avg_height_on_mountain - start_z
 
-    # prevent crazy huge negatives from dominating selection
-    fitness = max(fitness, -2.0)
+    # time spent actually on the mountain (normalised)
+    time_fraction = time_on_mountain / max(1, steps)
+
+    # fitness: climb + stay on mountain - roll to walls - be huge & sprawly
+    fitness = (
+        climb_height           # main goal: be higher on average
+        + 0.8 * time_fraction  # strong bonus: stay on the slope
+        - 0.02 * avg_xy_dist   # penalty: hang out far from centre
+        - size_penalty         # penalty: very wide shapes
+    )
+
+    # keep bad individuals from dominating selection numerically
+    fitness = max(fitness, -3.0)
     return fitness
 
 
 
-def watch_creature_on_mountain(dna, iterations=2400, start_pos=(0, 0, 6)):
+
+
+def watch_creature_on_mountain(dna, iterations=2400, start_pos=(0, 0, 2)):
     """
     Same as run_creature_on_mountain, but:
     - sets a nice camera
@@ -381,6 +445,9 @@ def watch_creature_on_mountain(dna, iterations=2400, start_pos=(0, 0, 6)):
 
     start_orn = p.getQuaternionFromEuler((0, 0, 0))
     cid = p.loadURDF(xml_file, start_pos, start_orn)
+    
+    # Creature dynamics for viewing
+    p.changeDynamics(cid, -1, restitution=0.0, lateralFriction=1.2)
 
     # Nice camera pointing at the centre of the arena
     p.resetDebugVisualizerCamera(
@@ -396,6 +463,8 @@ def watch_creature_on_mountain(dna, iterations=2400, start_pos=(0, 0, 6)):
         if step % 24 == 0:
             update_motors_for_ga(cid, cr)
 
+        clamp_base_velocity(cid, max_lin=3.0, max_ang=3.0)
+        
         # Slow down to real-time so you can watch it
         time.sleep(1.0 / 240.0)
 

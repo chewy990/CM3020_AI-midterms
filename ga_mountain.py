@@ -4,9 +4,9 @@ import pybullet as p
 import creature
 import cw_envt_copy as env   # <- rename if your file name is different
 
-MODE = "motors_only"
-POP_SIZE = 5
-NUM_GENERATIONS = 3
+MODE = "full"
+POP_SIZE = 30
+NUM_GENERATIONS = 40
 ITERATIONS = 1600
 MUTATION_RATE = 0.15
 MUTATION_STD = 0.15
