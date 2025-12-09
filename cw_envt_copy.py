@@ -177,9 +177,8 @@ def load_mountain():
 def spawn_random_creature():
     """
     Generate a random creature using your Creature class and drop it into the world.
-    Returns the PyBullet body id of the robot.
+    Returns BOTH the PyBullet body id of the robot AND the Creature object.
     """
-    # gene_count can be adjusted depending on how complex you want it
     cr = creature.Creature(gene_count=3)
 
     # Save the creature as a temporary URDF
@@ -192,7 +191,8 @@ def spawn_random_creature():
     start_orn = p.getQuaternionFromEuler((0, 0, 0))
     robot_id = p.loadURDF(urdf_path, start_pos, start_orn)
 
-    return robot_id
+    return robot_id, cr
+
 
 
 # =========================
@@ -202,44 +202,46 @@ def spawn_random_creature():
 def main():
     # Connect in GUI mode so you can actually see the environment.
     p.connect(p.GUI)
-
-    # Allow PyBullet to find its default URDFs (plane, etc.)
     p.setAdditionalSearchPath(pybullet_data.getDataPath())
-
-    # Gravity
     p.setGravity(0, 0, -10)
 
     # Build arena and mountain
     arena_size = 20
     make_arena(arena_size=arena_size)
-    # make_rocks(arena_size=arena_size)  # optional, if you want extra obstacles
     load_mountain()
 
-    # Create one random creature
-    robot_id = spawn_random_creature()
+    # Create one random creature – get BOTH id and Creature object
+    robot_id, cr = spawn_random_creature()
 
+    # Camera
     p.resetDebugVisualizerCamera(
-        cameraDistance=18,             # zoom out more
-        cameraYaw=45,                  # rotate around
-        cameraPitch=-35,               # look downwards
-        cameraTargetPosition=[0, 0, 2] # look at middle of arena/mountain
+        cameraDistance=18,
+        cameraYaw=45,
+        cameraPitch=-35,
+        cameraTargetPosition=[0, 0, 2],
     )
 
-    # Use real-time simulation so PyBullet updates automatically with wall-clock time
-    p.setRealTimeSimulation(1)
+    # We will step simulation manually so we can drive motors
+    p.setRealTimeSimulation(0)
 
     print("Simulation running. Close the window or press Ctrl+C in the terminal to exit.")
 
     try:
-        # Keep the script alive so the GUI window doesn't close immediately
+        step = 0
         while True:
-            # If you want to read state or apply control, you can do it here.
-            # For now, we just sleep a bit to avoid busy-waiting.
-            time.sleep(1.0 / 120.0)
+            p.stepSimulation()
+            step += 1
+
+            # Every N steps, update the joint motors from the creature's motors
+            if step % 24 == 0:
+                update_motors_for_ga(robot_id, cr)
+
+            time.sleep(1.0 / 240.0)
     except KeyboardInterrupt:
         print("Exiting simulation...")
     finally:
         p.disconnect()
+
 
 # =========================
 # HELPERS FOR GA (reuse this from ga_mountain.py)
