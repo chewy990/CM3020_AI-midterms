@@ -268,13 +268,8 @@ def setup_world_for_ga(arena_size=20):
 def update_motors_for_ga(cid, cr):
     """
     Apply each motor's output as a joint velocity.
-
-    Note: In this codebase Motor doesn't have a .step() method,
-    so we just call get_output() directly.
     """
     motors = cr.get_motors()
-
-    # safety: don't assume motors and joints count are identical
     num_joints = p.getNumJoints(cid)
     num_motors = len(motors)
     count = min(num_joints, num_motors)
@@ -282,16 +277,16 @@ def update_motors_for_ga(cid, cr):
     for jid in range(count):
         m = motors[jid]
 
-        # Motor output is usually in [-1, 1]; scale it to a more visible velocity
-        vel = m.get_output() * 5.0   # tweak factor 5.0 if too wild / too weak
-
+        # more conservative scaling so they don't launch themselves like crazy
+        vel = m.get_output() * 2.0     # was 5.0
         p.setJointMotorControl2(
             cid,
             jid,
             controlMode=p.VELOCITY_CONTROL,
             targetVelocity=vel,
-            force=50,                 # a bit stronger than 15 so it can move under contact
+            force=30,                  # was 50 / 15
         )
+
 
 
 
@@ -318,11 +313,15 @@ def run_creature_on_mountain(dna, iterations=2400, start_pos=(0, 0, 6)):
     start_orn = p.getQuaternionFromEuler((0, 0, 0))
     cid = p.loadURDF(xml_file, start_pos, start_orn)
 
-    # start height = z of spawn position
+        # start height = z of spawn position
     start_z = start_pos[2]
-    max_height = start_z
+    max_height_on_mountain = start_z
 
-    min_xy_dist = float("inf")
+    total_xy_dist = 0.0
+    steps = 0
+
+    # choose a radius that roughly matches your mountain footprint
+    MOUNTAIN_RADIUS = 4.0
 
     for step in range(iterations):
         p.stepSimulation()
@@ -333,17 +332,28 @@ def run_creature_on_mountain(dna, iterations=2400, start_pos=(0, 0, 6)):
         cr.update_position(pos)
 
         x, y, z = pos
-        if z > max_height:
-            max_height = z
+        r = (x**2 + y**2) ** 0.5  # distance from centre (0,0)
+        total_xy_dist += r
+        steps += 1
 
-        xy_dist = (x**2 + y**2) ** 0.5
-        if xy_dist < min_xy_dist:
-            min_xy_dist = xy_dist
+        # ONLY reward height while the creature is above the mountain area
+        if r < MOUNTAIN_RADIUS:
+            if z > max_height_on_mountain:
+                max_height_on_mountain = z
 
-    raw_fitness = max_height - start_z
-    fitness = raw_fitness - 0.01 * min_xy_dist
+    # average distance from centre over the whole run
+    avg_xy_dist = total_xy_dist / max(1, steps)
+
+    # height gained while over the mountain
+    raw_height = max_height_on_mountain - start_z
+
+    # encourage staying near the mountain, discourage rolling to walls
+    fitness = raw_height - 0.02 * avg_xy_dist
+
+    # don't let terrible behaviour dominate
     fitness = max(fitness, -2.0)
     return fitness
+
 
 def watch_creature_on_mountain(dna, iterations=2400, start_pos=(0, 0, 6)):
     """
