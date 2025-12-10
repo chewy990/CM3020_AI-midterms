@@ -5,8 +5,8 @@ import creature
 import cw_envt_copy as env   # <- rename if your file name is different
 
 MODE = "full"
-POP_SIZE = 20
-NUM_GENERATIONS = 20
+POP_SIZE = 30
+NUM_GENERATIONS = 30
 ITERATIONS = 1600
 MUTATION_RATE = 0.15
 MUTATION_STD = 0.15

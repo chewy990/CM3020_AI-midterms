@@ -170,7 +170,7 @@ def load_mountain():
     )
 
     # Make the mountain non-bouncy and reasonably grippy
-    p.changeDynamics(mountain_id, -1, restitution=0.0, lateralFriction=1.5)
+    p.changeDynamics(mountain_id, -1, restitution=0.0, lateralFriction=2.5)
 
     return mountain_id
 
@@ -194,7 +194,7 @@ def spawn_random_creature():
     robot_id = p.loadURDF(urdf_path, start_pos, start_orn)
 
     # Make creature less bouncy and a bit grippy
-    p.changeDynamics(robot_id, -1, restitution=0.0, lateralFriction=1.2)
+    p.changeDynamics(robot_id, -1, restitution=0.0, lateralFriction=2.0)
 
     return robot_id, cr
 
@@ -273,13 +273,30 @@ def update_motors_for_ga(cid, cr):
     motors = cr.get_motors()
     for jid in range(p.getNumJoints(cid)):
         m = motors[jid]
-        vel = m.get_output() * 2.0
+        vel = m.get_output() * 4.0
         p.setJointMotorControl2(
             cid,
             jid,
             controlMode=p.VELOCITY_CONTROL,
             targetVelocity=vel,
-            force=30,
+            force=40,
+        )
+
+def update_motors_for_view(cid, cr, scale=3.0):
+    """
+    Stronger motors for VISUALISATION ONLY.
+    This does NOT affect GA fitness, only the GUI demo.
+    """
+    motors = cr.get_motors()
+    for jid in range(p.getNumJoints(cid)):
+        m = motors[jid]
+        vel = m.get_output() * scale   # exaggerate motion
+        p.setJointMotorControl2(
+            cid,
+            jid,
+            controlMode=p.VELOCITY_CONTROL,
+            targetVelocity=vel,
+            force=40,                  # stronger force for demo
         )
 
 
@@ -337,7 +354,7 @@ def run_creature_on_mountain(dna, iterations=2400, start_pos=(3, 0, 3)):
     cid = p.loadURDF(xml_file, start_pos, start_orn)
 
     # Creature dynamics: no bounce, some friction
-    p.changeDynamics(cid, -1, restitution=0.0, lateralFriction=1.2)
+    p.changeDynamics(cid, -1, restitution=0.0, lateralFriction=2.0)
 
 
     # ---------------------------
@@ -413,7 +430,8 @@ def run_creature_on_mountain(dna, iterations=2400, start_pos=(3, 0, 3)):
 
 
     fitness = (
-        climb_height           # main goal: be higher on average
+        2.0 * radial_improvement   # MAIN goal: get closer to the peak
+        + 1.0 * climb_height       # main goal: be higher on average
         + 0.8 * time_fraction  # strong bonus: stay on the slope
         + 0.2 * radial_improvement  # reward moving towards the top
         - 0.02 * avg_xy_dist   # penalty: hang out far from centre
@@ -466,11 +484,9 @@ def watch_creature_on_mountain(dna, iterations=2400, start_pos=(3, 0, 3)):
     for step in range(iterations):
         p.stepSimulation()
 
+        update_motors_for_view(cid, cr, scale=3.0)
         
-        update_motors_for_ga(cid, cr)
         clamp_base_velocity(cid, max_lin=3.0, max_ang=3.0)
-        
-        # Slow down to real-time
         time.sleep(1.0 / 240.0)
 
 
