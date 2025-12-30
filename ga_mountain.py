@@ -13,13 +13,14 @@ import cw_envt_copy as env   # environment + fitness functions
 # "motors_only" -> fix morphology, evolve motors only
 MODE = "full"
 
-POP_SIZE = 20          # number of individuals per generation
+POP_SIZE = 10          # number of individuals per generation
 NUM_GENERATIONS = 5  # how many generations to evolve for
 ITERATIONS = 1600      # simulation steps per fitness evaluation
 
 MUTATION_RATE = 0.15   # probability of mutating each gene element
 MUTATION_STD = 0.15    # standard deviation of Gaussian mutation noise
 
+LOG_FILE = "test.csv"
 
 # =========================
 # DNA UTILITIES
@@ -158,7 +159,7 @@ def genetic_algorithm_full():
 
     # Save fitness history for plotting in Jupyter
     np.savetxt(
-        "ga_full_log.csv",
+        LOG_FILE,
         np.array(history),
         delimiter=",",
         header="generation,best_fitness,mean_fitness",
@@ -251,3 +252,6 @@ if __name__ == "__main__":
 
     input("Press Enter to quit...")
     p.disconnect()
+
+
+# ============= END OF MY CODE ====================

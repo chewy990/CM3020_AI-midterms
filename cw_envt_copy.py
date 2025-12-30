@@ -188,6 +188,7 @@ def load_mountain():
 
     return mountain_id
 
+# ============= START OF MY CODE ====================
 
 def spawn_random_creature():
     """
@@ -528,3 +529,4 @@ def watch_creature_on_mountain(dna, iterations=2400, start_pos=(3, 0, 3)):
 if __name__ == "__main__":
     # Run the simple demo if this file is executed directly
     main()
+
